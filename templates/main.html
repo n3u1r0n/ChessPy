@@ -1,0 +1,236 @@
+<html>
+    <head>
+        <link rel='stylesheet' href='{{ url_for("static", filename="css/chessboard-1.0.0.min.css") }}' crossorigin='anonymous'>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js" integrity="sha512-q/dWJ3kcmjBLU4Qc47E4A9kTB4m3wuTY7vkFJDTZKjTs8jhyGQnaUrxa0Ytd0ssMZhbNua9hE+E7Qv1j+DyZwA==" crossorigin="anonymous"></script>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="icon" href='{{ url_for("static", filename="img/chesspieces/kosal/wN.svg") }}'>
+        <title>Chess</title>
+    </head>
+
+    <body>
+        <p class="h1 text-center mt-2"><img src='{{ url_for("static", filename="img/chesspieces/kosal/wN.svg") }}' width="38" height="38">Chess</p>
+        <div class="row p-4">
+            <div class="col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div id="chessBoard"></div>
+                        <form class="form-floating mt-4" onsubmit="window.location.replace('?fen=' + $fen.val()); return false;">
+                            <input type="text" class="form-control" id="fen" placeholder="FEN">
+                            <label for="fen">FEN</label>
+                        </form>
+                        <form class="form-floating mt-4" onsubmit="window.location.replace('?pgn=' + $pgn.val()); return false;">
+                            <textarea class="form-control" id="pgn" placeholder="PGN" style="height: 150px"></textarea>
+                            <label for="pgn">PGN</label>
+                        </form>
+                        <div class="btn-group mt-3 ms-4 ps-0" role="group">
+                            <button type="button" class="btn btn-outline-primary" onclick="window.location.replace('?fen=' + $fen.val())">Set FEN</button>
+                            <button type="button" class="btn btn-outline-primary" onclick="window.location.replace('?pgn=' + $pgn.val())">Set PGN</button>
+                            <a class="btn btn-outline-primary" href='?fen=rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'>Starting Position</a>
+                            <button type="button" class="btn btn-outline-primary" onclick="board.flip()">Switch Board</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="text-center mb-4 h3" id="status"></div>
+                        <div class="form-check form-switch mb-4 d-flex align-items-stretch">
+                            <input class="form-check-input me-2" type="checkbox" id="engine_auto" onclick="switch_auto()">
+                            <label class="form-check-label me-5" for="engine_auto">Automatic Engine Move</label>
+                        </div>
+                        <div class="mb-4">
+                            <div id="engine_loading" class="spinner-grow" role="status" hidden>
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div class="input-group mb-3" id="engine_input">
+                                <span class="input-group-text">Engine Parameter</span>
+                                <input id="engine_parameter" type="text" class="form-control" placeholder="Engine Parameter" value="3">
+                                <button id="engine_button" type="button" class="btn btn-primary" onclick="engine_move()">Engine Move</button>
+                            </div>
+                        </div>
+                        <label for="promotion" class="form-label me-4">Promote to</label>
+                        <div class="btn-group" role="group" id="promotion">
+                            <input id="q" type="radio" class="btn-check" checked>
+                            <label class="btn btn-outline-primary" for="q" onclick="set_promotion('q')"><img class="me-2" src='{{ url_for("static", filename="img/chesspieces/kosal/wQ.svg") }}' width="24" height="24"><img src='{{ url_for("static", filename="img/chesspieces/kosal/bQ.svg") }}' width="24" height="24"></label>
+                            <input id="r" type="radio" class="btn-check">
+                            <label class="btn btn-outline-primary" for="r" onclick="set_promotion('r')"><img class="me-2" src='{{ url_for("static", filename="img/chesspieces/kosal/wR.svg") }}' width="24" height="24"><img src='{{ url_for("static", filename="img/chesspieces/kosal/bR.svg") }}' width="24" height="24"></label>
+                            <input id="b" type="radio" class="btn-check">
+                            <label class="btn btn-outline-primary" for="b" onclick="set_promotion('b')"><img class="me-2" src='{{ url_for("static", filename="img/chesspieces/kosal/wB.svg") }}' width="24" height="24"><img src='{{ url_for("static", filename="img/chesspieces/kosal/bB.svg") }}' width="24" height="24"></label>
+                            <input id="n" type="radio" class="btn-check">
+                            <label class="btn btn-outline-primary" for="n" onclick="set_promotion('n')"><img class="me-2" src='{{ url_for("static", filename="img/chesspieces/kosal/wN.svg") }}' width="24" height="24"><img src='{{ url_for("static", filename="img/chesspieces/kosal/bN.svg") }}' width="24" height="24"></label>
+                        </div>
+                        <div class="card mt-4">
+                            <h5 class="card-header">Moves</h5>
+                            <div class="card-body">
+                                <div id="moves"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+          </div>
+
+        <script src='https://code.jquery.com/jquery-3.6.0.min.js'></script>
+        <script src='{{ url_for("static", filename="js/chessboard-1.0.0.min.js") }}'></script>
+        <script>
+            var socket, board, game, $status, $fen, $pgn, $moves;
+            var promotion = 'q';
+            var auto = false;
+            var do_move = false;
+            function set_promotion(type) {
+                promotion = type;
+                $('#q').prop('checked', promotion == 'q');
+                $('#r').prop('checked', promotion == 'r');
+                $('#b').prop('checked', promotion == 'b');
+                $('#n').prop('checked', promotion == 'n');
+            };
+            function switch_auto() {
+                auto = $('#engine_auto').prop('checked');
+                $('#engine_button').prop('disabled', auto);
+            };
+            function engine_move() {
+                if (game.game_over) return;
+                socket.emit('engine_move', $('#engine_parameter').val());
+                $('#engine_input').prop('hidden', true);
+                $('#engine_loading').prop('hidden', false);
+            };
+            window.onload = function () {
+                $status = $('#status');
+                $fen = $('#fen');
+                $pgn = $('#pgn');
+                $moves = $('#moves');
+                function onDragStart (source, piece, position, orientation) {
+                    if (game.game_over) return false;
+                    if ((game.turn === true && piece.search(/^b/) !== -1) ||
+                        (game.turn === false && piece.search(/^w/) !== -1)) {
+                        return false;
+                    };
+                };
+                function onDrop (source, target) {
+                    if (game.legal_moves.indexOf(source + target) == -1) {
+                        if (game.legal_moves.indexOf(source + target + promotion) == -1) return 'snapback';
+                        socket.emit('move', source + target + promotion);
+                        update();
+                        return;
+                    };
+                    socket.emit('move', source + target);
+                    update();
+                    do_move = auto;
+                };
+                function updateStatus() {
+                    board.position(game.fen);
+                    var moveColor = 'White';
+                    if (game.turn == false) {
+                        moveColor = 'Black';
+                    };
+                    if (game.game_over) {
+                        status = game.eval;
+                        $('#q').prop('disabled', true);
+                        $('#r').prop('disabled', true);
+                        $('#b').prop('disabled', true);
+                        $('#n').prop('disabled', true);
+                        $('#engine_button').prop('disabled', true);
+                    } else {
+                        status = moveColor + ' to move';
+                        if (game.eval !== 'None') {
+                            status += ' (' + game.eval + ' depth=' + game.depth + ')';
+                        }
+                        $('#q').prop('disabled', false);
+                        $('#r').prop('disabled', false);
+                        $('#b').prop('disabled', false);
+                        $('#n').prop('disabled', false);
+                        $('#engine_button').prop('disabled', auto);
+                    };
+                    $status.html(status);
+                    $fen.val(game.fen);
+                    $pgn.html(game.pgn);
+                    var links = {
+                        'wK' : '{{ url_for("static", filename="img/chesspieces/kosal/wK.svg") }}',
+                        'wQ' : '{{ url_for("static", filename="img/chesspieces/kosal/wQ.svg") }}',
+                        'wR' : '{{ url_for("static", filename="img/chesspieces/kosal/wR.svg") }}',
+                        'wB' : '{{ url_for("static", filename="img/chesspieces/kosal/wB.svg") }}',
+                        'wN' : '{{ url_for("static", filename="img/chesspieces/kosal/wN.svg") }}',
+                        'wP' : '{{ url_for("static", filename="img/chesspieces/kosal/wP.svg") }}',
+                        'bK' : '{{ url_for("static", filename="img/chesspieces/kosal/bK.svg") }}',
+                        'bQ' : '{{ url_for("static", filename="img/chesspieces/kosal/bQ.svg") }}',
+                        'bR' : '{{ url_for("static", filename="img/chesspieces/kosal/bR.svg") }}',
+                        'bB' : '{{ url_for("static", filename="img/chesspieces/kosal/bB.svg") }}',
+                        'bN' : '{{ url_for("static", filename="img/chesspieces/kosal/bN.svg") }}',
+                        'bP' : '{{ url_for("static", filename="img/chesspieces/kosal/bP.svg") }}',
+                    };
+                    var figures = ['K', 'Q', 'R', 'B', 'N', 'P'];
+                    var buttons = [];
+                    var i = 0;
+                    for (move of game.pgn.split(' ')) {
+                        if (i % 3 == 0){
+                            i += 1;
+                            continue;
+                        };
+                        if (move === '*') break;
+                        let button =  '<button type="button" class="btn btn-outline-primary m-2" disabled>';
+                        button += (i  - i % 3) / 3 + 1;
+                        if (move[0] == move[0].toLowerCase()) {
+                            move = 'P' + move;
+                        };
+                        button += ') ' + move;
+                        button += '</button>';
+                        i += 1;
+                        buttons.push(button);
+                    };
+                    number_of_moves = buttons.length
+                    for (let i = 0; i < number_of_moves; i++) {
+                        if (((moveColor == 'White') + i + number_of_moves) % 2) {
+                            color = 'w';
+                        } else {
+                            color = 'b';
+                        };
+                        for (figure of figures) {
+                            buttons[i] = buttons[i].replace(
+                                figure,
+                                '<img class="" src=' + links[color + figure] + ' width="24" height="24"> '
+                            );
+                        };
+                    };
+                    $moves.html(buttons.join('\n'));
+                };
+                function update() {
+                    socket.emit('update', '');
+                };
+                socket = io();
+                socket.on('connect', (data) =>  update());
+                socket.on('update', (data) =>  {
+                    game = data;
+                    updateStatus();
+                    if (do_move) {
+                        do_move = false;
+                        engine_move();
+                    };
+                    sleep(1000).then(() => {
+                        update();
+                    });
+                });
+                socket.on('engine_move', (fen) =>  {
+                    $('#engine_input').prop('hidden', false);
+                    $('#engine_loading').prop('hidden', true);
+                    update();
+                });
+                var config = {
+                    pieceTheme: '{{ url_for("static", filename="img/chesspieces/kosal") }}/{piece}.svg',
+                    draggable: true,
+                    onDrop: onDrop,
+                    onDragStart: onDragStart,
+                };
+                board = Chessboard('chessBoard', config);
+                set_promotion('q');
+                $('#engine_auto').prop('checked', auto);
+                
+                function sleep(ms) {
+                    return new Promise(resolve => setTimeout(resolve, ms));
+                };
+            };
+
+        </script>
+    </body>
+</html>
